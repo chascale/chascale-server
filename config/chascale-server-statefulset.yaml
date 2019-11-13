@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: chascale-server
+  labels:
+    app: chascale-server
+spec:
+  serviceName: chascale-server
+  replicas: 3
+  selector:
+    matchLabels:
+      app: chascale-server
+  template:
+    metadata:
+      labels:
+        app: chascale-server
+    spec:
+      terminationGracePeriodSeconds: 1800
+      containers:
+      - name: chascale-server
+        image: bazel:chascale-server-container
+        imagePullPolicy: IfNotPresent 
+        ports:
+        - containerPort: 8080
