@@ -47,11 +47,11 @@ func main() {
 				log.Println("read:", err)
 				return
 			}
-			log.Printf("recv: %s", m)
+			log.Printf("recv: %v", m)
 		}
 	}()
 
-	ticker := time.NewTicker(time.Second)
+	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 	toIDs := []string{}
 	if len(*toID) > 0 {
@@ -74,6 +74,7 @@ func main() {
 			//	log.Println("json marshal:", err)
 			//	return
 			//}
+			log.Printf("sent: %v", m)
 			err := c.WriteJSON(&m)
 			if err != nil {
 				log.Println("write:", err)

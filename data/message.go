@@ -10,6 +10,8 @@ type Message struct {
 	From string `json:"from"`
 	// Payload is the actual message send between clients, server nodes.
 	Payload []byte `json:"payload"`
+	// OrigNodeName is the node where the message originated.
+	OrigNodeName string `json:"origNodeName"`
 }
 
 func (m Message) JSON() ([]byte, error) {
