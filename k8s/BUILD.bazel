@@ -1,0 +1,12 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["cluster.go"],
+    importpath = "github.com/chascale/chascale-server/k8s",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_github_ericchiang_k8s//:go_default_library",
+        "@com_github_ericchiang_k8s//apis/core/v1:go_default_library",
+    ],
+)

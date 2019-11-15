@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/chascale/chascale-server/data"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
@@ -17,11 +18,6 @@ import (
 var addr = flag.String("addr", ":8080", "http service address")
 var clientID = flag.String("client_id", "", "client id")
 var toID = flag.String("to_id", "", "detination client id")
-
-type clientMsg struct {
-	ToIDs   []string `json:"toIds"`
-	Message string   `json:"message"`
-}
 
 func main() {
 	flag.Parse()
@@ -45,7 +41,7 @@ func main() {
 	go func() {
 		defer close(done)
 		for {
-			m := clientMsg{}
+			m := data.Message{}
 			err := c.ReadJSON(&m)
 			if err != nil {
 				log.Println("read:", err)
@@ -68,9 +64,10 @@ func main() {
 		case <-done:
 			return
 		case t := <-ticker.C:
-			m := clientMsg{
-				ToIDs:   toIDs,
-				Message: fmt.Sprintf("From:%s, msg: %s", *clientID, strconv.FormatInt(t.Unix(), 10)),
+			m := data.Message{
+				To:      toIDs,
+				From:    *clientID,
+				Payload: []byte(fmt.Sprintf("From:%s, msg: %s", *clientID, strconv.FormatInt(t.Unix(), 10))),
 			}
 			//mbytes, err := json.Marshal(&m)
 			//if err != nil {

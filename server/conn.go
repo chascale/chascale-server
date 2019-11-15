@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/chascale/chascale-server/data"
 	"github.com/gorilla/websocket"
 )
 
@@ -20,11 +21,6 @@ const (
 
 	// Maximum message size allowed from peer.
 	maxMessageSize = 512
-)
-
-var (
-	newline = []byte{'\n'}
-	space   = []byte{' '}
 )
 
 var upgrader = websocket.Upgrader{
@@ -43,12 +39,7 @@ type WSConnection struct {
 	conn *websocket.Conn
 
 	// Buffered channel of outbound messages.
-	send chan []byte
-}
-
-type clientMsg struct {
-	ToIDs   []string `json:"toIds"`
-	Message string   `json:"message"`
+	send chan data.Message
 }
 
 // readPump pumps messages from the websocket connection to the hub.
@@ -68,18 +59,18 @@ func (c *WSConnection) readPump() {
 		return nil
 	})
 	for {
-		msg := clientMsg{}
-		err := c.conn.ReadJSON(&msg)
-		if err != nil {
-			log.Printf("error: %v\n", err)
+		msg := data.Message{}
+		if err := c.conn.ReadJSON(&msg); err != nil {
+			log.Printf("[DEBUG] chascale: error: %v\n", err)
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("error: %v", err)
+				log.Printf("[DEBUG] chascale: error: %v", err)
 			}
 			break
 		}
+		// Reset from ID.
+		msg.From = c.ID
 		fmt.Println(msg)
-		//message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
-		c.hub.broadcast <- toClientMsg{toIDs: msg.ToIDs, msg: []byte(msg.Message)}
+		c.hub.broadcast <- msg
 	}
 }
 
@@ -104,21 +95,11 @@ func (c *WSConnection) writePump() {
 				return
 			}
 
-			j := clientMsg{Message: string(message)}
-			if err := c.conn.WriteJSON(&j); err != nil {
+			// Reset To
+			message.To = []string{}
+			if err := c.conn.WriteJSON(&message); err != nil {
 				return
 			}
-
-			// Add queued chat messages to the current websocket message.
-			// n := len(c.send)
-			// for i := 0; i < n; i++ {
-			// 	w.Write(newline)
-			// 	w.Write(<-c.send)
-			// }
-
-			// if err := w.Close(); err != nil {
-			// 	return
-			// }
 		case <-ticker.C:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {

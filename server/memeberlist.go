@@ -39,6 +39,7 @@ func main() {
 	cfg.BindPort = *bindPort
 
 	list, err := memberlist.Create(cfg)
+	memberlist.MetaMaxSize
 
 	if err != nil {
 		panic("Failed to create memberlist: " + err.Error())

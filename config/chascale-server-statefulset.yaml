@@ -18,7 +18,8 @@ spec:
       terminationGracePeriodSeconds: 1800
       containers:
       - name: chascale-server
-        image: bazel:chascale-server-container
+        image: chascale-server:latest
         imagePullPolicy: IfNotPresent 
         ports:
         - containerPort: 8080
+        - containerPort: 8081
