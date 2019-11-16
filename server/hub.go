@@ -48,7 +48,7 @@ type Hub struct {
 // NewHub creates a new hub with seeds and peerPort.
 func NewHub(seeds []string, peerPort int) *Hub {
 	return &Hub{
-		broadcast:      make(chan data.Message, 256),
+		broadcast:      make(chan data.Message),
 		peercast:       make(chan clientChangeMessage, 256),
 		register:       make(chan *WSConnection),
 		unregister:     make(chan *WSConnection),
@@ -61,64 +61,61 @@ func NewHub(seeds []string, peerPort int) *Hub {
 
 // Run starts the hub.
 func (h *Hub) Run() {
-	add := make(chan string, 256)
-	remove := make(chan string, 256)
-	go h.syncWithPeers(add, remove)
 	if err := h.joinCluster(); err != nil {
 		panic(fmt.Sprintf("node failed to join the cluster: %v", err))
 	}
+	add := make(chan string, 256)
+	remove := make(chan string, 256)
+	go h.syncWithPeers(add, remove)
+	curName := h.memberlistCfg.Name
 	for {
 		select {
 		case conn := <-h.register:
+			log.Printf("%s chascale: register %v", curName, conn)
 			// TODO: How the new peers will be notified about the new client add.
 			h.conns.Store(conn.ID, conn)
 			add <- conn.ID
 		case conn := <-h.unregister:
+			log.Printf("%s chascale: unregister %v", curName, conn)
 			if _, ok := h.conns.Load(conn.ID); ok {
 				h.conns.Delete(conn.ID)
 				close(conn.send)
 				remove <- conn.ID
 			}
 		case m := <-h.broadcast:
+			log.Printf("%s chascale: broadcast message %v", curName, m)
 			for _, id := range m.To {
-				conn, ok := h.conns.Load(id)
-				if !ok {
-					log.Printf("[ERROR] chascale:notfound failed to find the connection to forward the message: %v", m)
-					// Buffer the messages until the clients get connected.
-					if _, bok := h.toClientMsgBuf[id]; !bok {
-						h.toClientMsgBuf[id] = []data.Message{}
-					}
-					h.toClientMsgBuf[id] = append(h.toClientMsgBuf[id], m)
-					continue
-				}
-				switch c := conn.(type) {
+				v, _ := h.conns.Load(id)
+				switch conn := v.(type) {
 				case *WSConnection:
-					log.Printf("[DEBUG] chascale:wsconnection: message %v, current node %s", m, h.memberlistCfg.Name)
+					log.Printf("%s chascale: broadcasting message %v to %v", curName, m, conn)
 					select {
-					case c.send <- m:
+					case conn.send <- m:
 					default:
-						h.unregister <- c
+						h.unregister <- conn
 					}
 				case string:
-					log.Printf("[DEBUG] chascale:node: message intended for peer %v,  %v", c, m)
-					node := h.nodeByName(c)
+					nodeName := conn
+					log.Printf("%s chascale: forwarding message %v to %v", curName, m, nodeName)
+					node := h.nodeByName(nodeName)
 					if node != nil {
 						// Override to list node to flood the meesages.
 						m.To = []string{id}
 						m.OrigNodeName = h.memberlistCfg.Name
 						b, err := json.Marshal(m)
 						if err != nil {
-							log.Printf("[DEBUG] chascale: failed to marshal %v to json: %v", m, err)
+							log.Printf("[ERROR] %s chascale: failed to marshal %v to json: %v", curName, m, err)
 						}
 						if err := h.peers.SendReliable(node, b); err != nil {
-							log.Printf("[ERROR] chascale:node: failed to send to node %v; message %v", c, m)
+							log.Printf("[ERROR] %s chascale:node: failed to send to node %v; message %v", curName, nodeName, m)
 						}
 					}
 				default:
-					log.Printf("[ERROR] chascale:c failted to find the connection type")
+					log.Printf("%s chascale: unable forward/broadcast message %v", curName, m)
 				}
 			}
 		case m := <-h.peercast:
+			log.Printf("%s chascale: peer message %v", curName, m)
 			go func(h *Hub, m clientChangeMessage) {
 				switch m.Op {
 				case "Add":
@@ -157,10 +154,12 @@ func (h *Hub) nodeByName(name string) *memberlist.Node {
 }
 
 func (h *Hub) syncWithPeers(add, remove chan string) {
+	curName := h.memberlistCfg.Name
 	ticker := time.NewTicker(1 * time.Minute)
 	for {
 		select {
 		case id := <-add:
+			log.Printf("%s chascale: boradcast add msg of id %v", curName, id)
 			m := clientChangeMessage{ClientIDs: []string{id}, NodeName: h.memberlistCfg.Name, Op: "Add"}
 			if b, err := json.Marshal(&m); err == nil {
 				for _, node := range h.peers.Members() {
@@ -168,6 +167,7 @@ func (h *Hub) syncWithPeers(add, remove chan string) {
 				}
 			}
 		case id := <-remove:
+			log.Printf("%s chascale: boradcast remove msg of id %v", curName, id)
 			m := clientChangeMessage{ClientIDs: []string{id}, NodeName: h.memberlistCfg.Name, Op: "Remove"}
 			if b, err := json.Marshal(&m); err == nil {
 				for _, node := range h.peers.Members() {
@@ -175,6 +175,7 @@ func (h *Hub) syncWithPeers(add, remove chan string) {
 				}
 			}
 		case <-ticker.C:
+			log.Printf("%s chascale: boradcast current state %v", curName)
 			ids := []string{}
 			h.conns.Range(func(k, v interface{}) bool {
 				switch v.(type) {
@@ -240,13 +241,13 @@ func (d *clusterDelegate) NotifyMsg(b []byte) {
 	go func(h *Hub, b []byte) {
 		m1 := clientChangeMessage{}
 		if err := json.Unmarshal(b, &m1); err == nil && !reflect.DeepEqual(m1, clientChangeMessage{}) {
-			log.Printf("[DEBUG] chascale: NotifyMsg m1: %v", m1)
+			log.Printf("%s chascale: received msg m1 %v", h.memberlistCfg.Name, m1)
 			h.peercast <- m1
 			return
 		}
 		m2 := data.Message{}
 		if err := json.Unmarshal(b, &m2); err == nil && !reflect.DeepEqual(m2, data.Message{}) {
-			log.Printf("[DEBUG] chascale: NotifyMsg m2: %v+", m2)
+			log.Printf("%s chascale: received msg m2 %v", h.memberlistCfg.Name, m2)
 			h.broadcast <- m2
 			return
 		}
