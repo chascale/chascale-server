@@ -101,7 +101,7 @@ func (h *Hub) Run() {
 					if node != nil {
 						// Override to list node to flood the meesages.
 						m.To = []string{id}
-						m.OrigNodeName = h.memberlistCfg.Name
+						// m.OrigNodeName = h.memberlistCfg.Name
 						b, err := json.Marshal(m)
 						if err != nil {
 							log.Printf("[ERROR] %s chascale: failed to marshal %v to json: %v", curName, m, err)

@@ -87,7 +87,7 @@ func (c *WSConnection) writePump() {
 	}()
 	for {
 		select {
-		case message, ok := <-c.send:
+		case m, ok := <-c.send:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
 				// The hub closed the channel.
@@ -96,8 +96,8 @@ func (c *WSConnection) writePump() {
 			}
 
 			// Reset To
-			message.To = []string{}
-			if err := c.conn.WriteJSON(&message); err != nil {
+			m.To = []string{}
+			if err := c.conn.WriteJSON(&data.Message{From: m.From, Payload: m.Payload}); err != nil {
 				return
 			}
 		case <-ticker.C:
